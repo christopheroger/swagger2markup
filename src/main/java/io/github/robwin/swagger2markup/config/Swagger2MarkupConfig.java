@@ -18,9 +18,10 @@
  */
 package io.github.robwin.swagger2markup.config;
 
+import java.util.Locale;
+
 import io.github.robwin.markup.builder.MarkupLanguage;
 import io.github.robwin.swagger2markup.GroupBy;
-import io.github.robwin.swagger2markup.Language;
 import io.github.robwin.swagger2markup.OrderBy;
 import io.swagger.models.Swagger;
 
@@ -34,7 +35,7 @@ public class Swagger2MarkupConfig {
     private final boolean separatedDefinitions;
     private final GroupBy pathsGroupedBy;
     private final OrderBy definitionsOrderedBy;
-    private final Language outputLanguage;
+    private final Locale outputLanguage;
 
     /**
      * @param swagger the Swagger source
@@ -49,7 +50,7 @@ public class Swagger2MarkupConfig {
      */
     public Swagger2MarkupConfig(Swagger swagger, MarkupLanguage markupLanguage, String examplesFolderPath,
                                 String schemasFolderPath, String descriptionsFolderPath, boolean separatedDefinitions,
-                                GroupBy pathsGroupedBy, OrderBy definitionsOrderedBy, Language outputLanguage) {
+                                GroupBy pathsGroupedBy, OrderBy definitionsOrderedBy, Locale outputLanguage) {
         this.swagger = swagger;
         this.markupLanguage = markupLanguage;
         this.examplesFolderPath = examplesFolderPath;
@@ -93,7 +94,7 @@ public class Swagger2MarkupConfig {
         return definitionsOrderedBy;
     }
 
-    public Language getOutputLanguage() {
+    public Locale getOutputLanguage() {
         return outputLanguage;
     }
 }

@@ -49,7 +49,7 @@ public class OverviewDocument extends MarkupDocument {
         super(swagger2MarkupConfig);
 
         ResourceBundle labels = ResourceBundle.getBundle("lang/labels",
-                swagger2MarkupConfig.getOutputLanguage().toLocale());
+                swagger2MarkupConfig.getOutputLanguage());
         OVERVIEW = labels.getString("overview");
         CURRENT_VERSION = labels.getString("current_version");
         VERSION = labels.getString("version");

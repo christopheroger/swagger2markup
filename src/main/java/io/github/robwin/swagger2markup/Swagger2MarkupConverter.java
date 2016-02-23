@@ -17,18 +17,22 @@
  *
  */
 package io.github.robwin.swagger2markup;
-import io.github.robwin.markup.builder.MarkupLanguage;
-import io.github.robwin.swagger2markup.config.Swagger2MarkupConfig;
-import io.github.robwin.swagger2markup.builder.document.*;
-import io.github.robwin.swagger2markup.utils.Consumer;
-import io.swagger.models.Swagger;
-import io.swagger.parser.SwaggerParser;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+
 import org.apache.commons.lang3.Validate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import io.github.robwin.markup.builder.MarkupLanguage;
+import io.github.robwin.swagger2markup.builder.document.DefinitionsDocument;
+import io.github.robwin.swagger2markup.builder.document.OverviewDocument;
+import io.github.robwin.swagger2markup.builder.document.PathsDocument;
+import io.github.robwin.swagger2markup.config.Swagger2MarkupConfig;
+import io.github.robwin.swagger2markup.utils.Consumer;
+import io.swagger.models.Swagger;
+import io.swagger.parser.SwaggerParser;
 
 /**
  * @author Robert Winkler
@@ -141,7 +145,7 @@ public class Swagger2MarkupConverter {
         private GroupBy pathsGroupedBy = GroupBy.AS_IS;
         private OrderBy definitionsOrderedBy = OrderBy.NATURAL;
         private MarkupLanguage markupLanguage = MarkupLanguage.ASCIIDOC;
-        private Language outputLanguage = Language.EN;
+        private Locale outputLanguage = Locale.ENGLISH;
 
         /**
          * Creates a Builder using a given Swagger source.
@@ -263,7 +267,18 @@ public class Swagger2MarkupConverter {
          * @return the Swagger2MarkupConverter.Builder
          */
         public Builder withOutputLanguage(Language language) {
-            this.outputLanguage = language;
+            this.outputLanguage = language.toLocale();
+            return this;
+        }
+        
+        /**
+         * Specifies labels language of output files
+         *
+         * @param localeLanguage the language as locale.
+         * @return the Swagger2MarkupConverter.Builder
+         */
+        public Builder withOutputLocaleLanguage(Locale localeLanguage) {
+            this.outputLanguage = localeLanguage;
             return this;
         }
     }

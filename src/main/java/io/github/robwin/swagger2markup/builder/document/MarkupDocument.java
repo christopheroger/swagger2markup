@@ -56,7 +56,7 @@ public abstract class MarkupDocument {
         this.markupDocBuilder = MarkupDocBuilders.documentBuilder(markupLanguage);
 
         ResourceBundle labels = ResourceBundle.getBundle("lang/labels",
-                swagger2MarkupConfig.getOutputLanguage().toLocale());
+                swagger2MarkupConfig.getOutputLanguage());
         DEFAULT_COLUMN = labels.getString("default_column");
         REQUIRED_COLUMN = labels.getString("required_column");
         SCHEMA_COLUMN = labels.getString("schema_column");

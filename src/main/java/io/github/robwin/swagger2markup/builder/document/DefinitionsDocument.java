@@ -67,7 +67,7 @@ public class DefinitionsDocument extends MarkupDocument {
         super(swagger2MarkupConfig);
 
         ResourceBundle labels = ResourceBundle.getBundle("lang/labels",
-                swagger2MarkupConfig.getOutputLanguage().toLocale());
+                swagger2MarkupConfig.getOutputLanguage());
         DEFINITIONS = labels.getString("definitions");
         JSON_SCHEMA = labels.getString("json_schema");
         XML_SCHEMA = labels.getString("xml_schema");

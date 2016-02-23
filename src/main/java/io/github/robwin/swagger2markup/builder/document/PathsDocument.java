@@ -72,7 +72,7 @@ public class PathsDocument extends MarkupDocument {
         super(swagger2MarkupConfig);
 
         ResourceBundle labels = ResourceBundle.getBundle("lang/labels",
-                swagger2MarkupConfig.getOutputLanguage().toLocale());
+                swagger2MarkupConfig.getOutputLanguage());
         PATHS = labels.getString("paths");
         RESOURCES = labels.getString("resources");
         PARAMETERS = labels.getString("parameters");
