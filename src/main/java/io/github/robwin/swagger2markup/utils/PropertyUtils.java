@@ -18,15 +18,27 @@
  */
 package io.github.robwin.swagger2markup.utils;
 
-import io.github.robwin.markup.builder.MarkupLanguage;
-import io.swagger.models.properties.*;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.Validate;
+import static org.apache.commons.lang3.StringUtils.defaultString;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
+import static org.apache.commons.lang3.StringUtils.join;
 
 import java.util.List;
 import java.util.Objects;
 
-import static org.apache.commons.lang3.StringUtils.*;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.Validate;
+
+import io.github.robwin.markup.builder.MarkupLanguage;
+import io.swagger.models.properties.ArrayProperty;
+import io.swagger.models.properties.BooleanProperty;
+import io.swagger.models.properties.DoubleProperty;
+import io.swagger.models.properties.FloatProperty;
+import io.swagger.models.properties.IntegerProperty;
+import io.swagger.models.properties.LongProperty;
+import io.swagger.models.properties.Property;
+import io.swagger.models.properties.RefProperty;
+import io.swagger.models.properties.StringProperty;
+import io.swagger.models.properties.UUIDProperty;
 
 public final class PropertyUtils {
 
@@ -39,7 +51,9 @@ public final class PropertyUtils {
      */
     public static String getType(Property property, MarkupLanguage markupLanguage){
         Validate.notNull(property, "property must not be null!");
+        
         String type;
+      
         if(property instanceof RefProperty){
             RefProperty refProperty = (RefProperty)property;
             switch (markupLanguage){
@@ -56,17 +70,36 @@ public final class PropertyUtils {
             if(CollectionUtils.isNotEmpty(enums)){
                 type = "enum" + " (" + join(enums, ", ") + ")";
             }else{
-                type = property.getType();
+                if(isNotBlank(property.getFormat())){
+                    type = defaultString(property.getType()) + renderFormat(property.getFormat());
+                }else{
+                    type = property.getType();
+                }
+                if (stringProperty.getMaxLength()!=null){
+                    type=type+" (max: "+stringProperty.getMaxLength()+")";
+                }
+                
             }
         }
         else{
             if(isNotBlank(property.getFormat())){
-                type = defaultString(property.getType()) + " (" + property.getFormat() + ")";
+                type = defaultString(property.getType()) + renderFormat(property.getFormat());
             }else{
                 type = property.getType();
             }
         }
         return defaultString(type);
+    }
+
+    /**
+     * Render the extended format information.
+     *
+     * @param propFormat the format property
+     * @return the formated string.
+     */
+    private static String renderFormat(String propFormat)
+    {
+        return System.lineSeparator()+"(" + propFormat + ")";      
     }
 
     /**
