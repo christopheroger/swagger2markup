@@ -19,12 +19,6 @@
 package io.github.robwin.swagger2markup.builder.document;
 
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
-import io.github.robwin.markup.builder.MarkupTableColumn;
-import io.github.robwin.swagger2markup.config.Swagger2MarkupConfig;
-import io.swagger.models.auth.ApiKeyAuthDefinition;
-import io.swagger.models.auth.BasicAuthDefinition;
-import io.swagger.models.auth.OAuth2Definition;
-import io.swagger.models.auth.SecuritySchemeDefinition;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,7 +28,11 @@ import java.util.ResourceBundle;
 
 import org.apache.commons.collections.MapUtils;
 
-import com.google.common.base.Joiner;
+import io.github.robwin.markup.builder.MarkupTableColumn;
+import io.github.robwin.swagger2markup.config.Swagger2MarkupConfig;
+import io.swagger.models.auth.ApiKeyAuthDefinition;
+import io.swagger.models.auth.OAuth2Definition;
+import io.swagger.models.auth.SecuritySchemeDefinition;
 
 /**
  * @author Robert Winkler
@@ -54,7 +52,7 @@ public class SecurityDocument extends MarkupDocument {
         super(swagger2MarkupConfig, outputDirectory);
 
         ResourceBundle labels = ResourceBundle.getBundle("lang/labels",
-                swagger2MarkupConfig.getOutputLanguage().toLocale());
+                swagger2MarkupConfig.getOutputLanguage());
         SECURITY = labels.getString("security");
         TYPE = labels.getString("security_type");
         NAME = labels.getString("security_name");
