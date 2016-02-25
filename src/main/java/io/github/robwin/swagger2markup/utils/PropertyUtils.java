@@ -18,9 +18,8 @@
  */
 package io.github.robwin.swagger2markup.utils;
 
-import static org.apache.commons.lang3.StringUtils.defaultString;
+
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
-import static org.apache.commons.lang3.StringUtils.join;
 
 import java.util.List;
 import java.util.Objects;
@@ -28,17 +27,27 @@ import java.util.Objects;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.Validate;
 
-import io.github.robwin.markup.builder.MarkupLanguage;
+import com.google.common.base.Function;
+
+import io.github.robwin.swagger2markup.type.ArrayType;
+import io.github.robwin.swagger2markup.type.BasicType;
+import io.github.robwin.swagger2markup.type.EnumType;
+import io.github.robwin.swagger2markup.type.ObjectType;
+import io.github.robwin.swagger2markup.type.RefType;
+import io.github.robwin.swagger2markup.type.Type;
 import io.swagger.models.properties.ArrayProperty;
 import io.swagger.models.properties.BooleanProperty;
 import io.swagger.models.properties.DoubleProperty;
 import io.swagger.models.properties.FloatProperty;
 import io.swagger.models.properties.IntegerProperty;
 import io.swagger.models.properties.LongProperty;
+import io.swagger.models.properties.ObjectProperty;
 import io.swagger.models.properties.Property;
 import io.swagger.models.properties.RefProperty;
 import io.swagger.models.properties.StringProperty;
 import io.swagger.models.properties.UUIDProperty;
+import io.swagger.models.refs.RefFormat;
+
 
 public final class PropertyUtils {
 
@@ -46,49 +55,58 @@ public final class PropertyUtils {
      * Retrieves the type and format of a property.
      *
      * @param property the property
-     * @param markupLanguage the markup language which is used to generate the files
      * @return the type of the property
      */
-    public static String getType(Property property, MarkupLanguage markupLanguage){
+    public static Type getType(Property property, Function<String, String> definitionDocumentResolver){
         Validate.notNull(property, "property must not be null!");
-        
-        String type;
-      
+
+        Type type;
+
         if(property instanceof RefProperty){
             RefProperty refProperty = (RefProperty)property;
-            switch (markupLanguage){
-                case ASCIIDOC: return "<<" + refProperty.getSimpleRef() + ">>";
-                default: return refProperty.getSimpleRef();
-            }
+            if (refProperty.getRefFormat() == RefFormat.RELATIVE)
+                type = new ObjectType(null, null); // FIXME : Workaround for https://github.com/swagger-api/swagger-parser/issues/177
+            else
+                type = new RefType(definitionDocumentResolver.apply(refProperty.getSimpleRef()), refProperty.getSimpleRef());
         }else if(property instanceof ArrayProperty){
             ArrayProperty arrayProperty = (ArrayProperty)property;
             Property items = arrayProperty.getItems();
-            type = getType(items, markupLanguage) + " " + arrayProperty.getType();
+            type = new ArrayType(null, getType(items, definitionDocumentResolver));
         }else if(property instanceof StringProperty){
             StringProperty stringProperty = (StringProperty)property;
             List<String> enums = stringProperty.getEnum();
             if(CollectionUtils.isNotEmpty(enums)){
-                type = "enum" + " (" + join(enums, ", ") + ")";
+                type = new EnumType(null, enums);
             }else{
-                if(isNotBlank(property.getFormat())){
-                    type = defaultString(property.getType()) + renderFormat(property.getFormat());
-                }else{
-                    type = property.getType();
-                }
-                if (stringProperty.getMaxLength()!=null){
-                    type=type+" (max: "+stringProperty.getMaxLength()+")";
-                }
-                
+//<<<<<<< HEAD
+//                if(isNotBlank(property.getFormat())){
+//                    type = defaultString(property.getType()) + renderFormat(property.getFormat());
+//                }else{
+//                    type = property.getType();
+//                }
+//                if (stringProperty.getMaxLength()!=null){
+//                    type=type+" (max: "+stringProperty.getMaxLength()+")";
+//                }
+//                
+//=======
+                type = new BasicType(property.getType());
+
             }
+        }else if(property instanceof ObjectProperty) {
+          type = new ObjectType(null, ((ObjectProperty) property).getProperties());
         }
         else{
             if(isNotBlank(property.getFormat())){
-                type = defaultString(property.getType()) + renderFormat(property.getFormat());
+//<<<<<<< HEAD
+//                type = defaultString(property.getType()) + renderFormat(property.getFormat());
+//=======
+                type = new BasicType(property.getType(), property.getFormat());
+
             }else{
-                type = property.getType();
+                type = new BasicType(property.getType());
             }
         }
-        return defaultString(type);
+        return type;
     }
 
     /**

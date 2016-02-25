@@ -30,6 +30,7 @@ import static org.apache.commons.lang3.StringUtils.*;
 
 public class OverviewDocument extends MarkupDocument {
 
+    private static final String OVERVIEW_ANCHOR = "overview";
     private final String OVERVIEW;
     private final String CURRENT_VERSION;
     private final String VERSION;
@@ -45,8 +46,8 @@ public class OverviewDocument extends MarkupDocument {
     private final String BASE_PATH;
     private final String SCHEMES;
 
-    public OverviewDocument(Swagger2MarkupConfig swagger2MarkupConfig){
-        super(swagger2MarkupConfig);
+    public OverviewDocument(Swagger2MarkupConfig swagger2MarkupConfig, String outputDirectory){
+        super(swagger2MarkupConfig, outputDirectory);
 
         ResourceBundle labels = ResourceBundle.getBundle("lang/labels",
                 swagger2MarkupConfig.getOutputLanguage());
@@ -77,6 +78,10 @@ public class OverviewDocument extends MarkupDocument {
         return this;
     }
 
+    private void addOverviewTitle(String title) {
+        this.markupDocBuilder.sectionTitleWithAnchorLevel1(title, OVERVIEW_ANCHOR);
+    }
+
 
     /**
      * Builds the document header of the swagger model
@@ -84,15 +89,13 @@ public class OverviewDocument extends MarkupDocument {
     private void overview() {
         Info info = swagger.getInfo();
         this.markupDocBuilder.documentTitle(info.getTitle());
-        this.markupDocBuilder.sectionTitleLevel1(OVERVIEW);
+        addOverviewTitle(OVERVIEW);
         if(isNotBlank(info.getDescription())){
             this.markupDocBuilder.textLine(info.getDescription());
-            this.markupDocBuilder.newLine();
         }
         if(isNotBlank(info.getVersion())){
             this.markupDocBuilder.sectionTitleLevel2(CURRENT_VERSION);
             this.markupDocBuilder.textLine(VERSION + info.getVersion());
-            this.markupDocBuilder.newLine();
         }
         Contact contact = info.getContact();
         if(contact != null){
@@ -103,7 +106,6 @@ public class OverviewDocument extends MarkupDocument {
             if(isNotBlank(contact.getEmail())){
                 this.markupDocBuilder.textLine(CONTACT_EMAIL + contact.getEmail());
             }
-            this.markupDocBuilder.newLine();
         }
 
         License license = info.getLicense();
@@ -115,11 +117,9 @@ public class OverviewDocument extends MarkupDocument {
             if (isNotBlank(license.getUrl())) {
                 this.markupDocBuilder.textLine(LICENSE_URL + license.getUrl());
             }
-            this.markupDocBuilder.newLine();
         }
         if(isNotBlank(info.getTermsOfService())){
             this.markupDocBuilder.textLine(TERMS_OF_SERVICE + info.getTermsOfService());
-            this.markupDocBuilder.newLine();
         }
 
         if(isNotBlank(swagger.getHost()) || isNotBlank(swagger.getBasePath()) || isNotEmpty(swagger.getSchemes())) {
@@ -137,7 +137,6 @@ public class OverviewDocument extends MarkupDocument {
                 }
                 this.markupDocBuilder.textLine(SCHEMES + join(schemes, ", "));
             }
-            this.markupDocBuilder.newLine();
         }
 
         if(isNotEmpty(swagger.getTags())){
@@ -153,19 +152,16 @@ public class OverviewDocument extends MarkupDocument {
                 }
             }
             this.markupDocBuilder.unorderedList(tags);
-            this.markupDocBuilder.newLine();
         }
 
         if(isNotEmpty(swagger.getConsumes())){
             this.markupDocBuilder.sectionTitleLevel2(CONSUMES);
             this.markupDocBuilder.unorderedList(swagger.getConsumes());
-            this.markupDocBuilder.newLine();
         }
 
         if(isNotEmpty(swagger.getProduces())){
             this.markupDocBuilder.sectionTitleLevel2(PRODUCES);
             this.markupDocBuilder.unorderedList(swagger.getProduces());
-            this.markupDocBuilder.newLine();
         }
 
     }
