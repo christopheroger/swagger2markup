@@ -18,12 +18,15 @@
  */
 package io.github.robwin.swagger2markup.config;
 
+import java.util.Comparator;
 import java.util.Locale;
 
 import io.github.robwin.markup.builder.MarkupLanguage;
 import io.github.robwin.swagger2markup.GroupBy;
 import io.github.robwin.swagger2markup.OrderBy;
+import io.github.robwin.swagger2markup.PathOperation;
 import io.swagger.models.Swagger;
+import io.swagger.models.parameters.Parameter;
 
 public class Swagger2MarkupConfig {
 
@@ -33,9 +36,33 @@ public class Swagger2MarkupConfig {
     private final String schemasFolderPath;
     private final String descriptionsFolderPath;
     private final boolean separatedDefinitions;
+    private final boolean separatedOperations;
     private final GroupBy pathsGroupedBy;
+    @Deprecated
     private final OrderBy definitionsOrderedBy;
+
     private final Locale outputLanguage;
+
+    private final int inlineSchemaDepthLevel;
+    private final Comparator<String> tagOrdering;
+    private final Comparator<PathOperation> operationOrdering;
+    private final Comparator<String> definitionOrdering;
+    private final Comparator<Parameter> parameterOrdering;
+    private final Comparator<String> propertyOrdering;
+    private final Comparator<String> responseOrdering;
+    private final boolean interDocumentCrossReferences;
+    private final String interDocumentCrossReferencesPrefix;
+    private final boolean flatBody;
+    private final String anchorPrefix;
+
+    private static final String OVERVIEW_DOCUMENT = "overview";
+    private static final String PATHS_DOCUMENT = "paths";
+    private static final String DEFINITIONS_DOCUMENT = "definitions";
+    private static final String SECURITY_DOCUMENT = "security";
+
+    private static final String SEPARATED_DEFINITIONS_FOLDER = "definitions";
+    private static final String SEPARATED_OPERATIONS_FOLDER = "operations";
+
 
     /**
      * @param swagger the Swagger source
@@ -44,22 +71,53 @@ public class Swagger2MarkupConfig {
      * @param schemasFolderPath the path to the folder where the schema documents reside
      * @param descriptionsFolderPath the path to the folder where the description documents reside
      * @param separatedDefinitions specified if in addition to the definitions file, also separate definition files for each model definition should be created
+     * @param separatedOperations specified if in addition to the paths file, also separate operation files for each operation should be created
      * @param pathsGroupedBy specifies if the paths should be grouped by tags or stay as-is
      * @param definitionsOrderedBy specifies if the definitions should be ordered by natural ordering or stay as-is
      * @param outputLanguage specifies language of labels in output files
+     * @param inlineSchemaDepthLevel specifies the max depth for inline object schema display (0 = no inline schemas)
+     * @param tagOrdering specifies a custom comparator function to order tags (null = as-is ordering)
+     * @param operationOrdering specifies a custom comparator function to order operations (null = as-is ordering)
+     * @param definitionOrdering specifies a custom comparator function to order definitions (null = as-is ordering)
+     * @param parameterOrdering specifies a custom comparator function to order parameters (null = as-is ordering)
+     * @param propertyOrdering specifies a custom comparator function to order properties (null = as-is ordering)
+     * @param responseOrdering specifies a custom comparator function to order responses (null = as-is ordering)
+     * @param interDocumentCrossReferences enable use of inter-document cross-references when needed
+     * @param interDocumentCrossReferencesPrefix set an optional prefix for inter-document cross-references
+     * @param flatBody optionally isolate the body parameter, if any, from other parameters
+     * @param anchorPrefix optionally prefix all anchors for unicity
      */
     public Swagger2MarkupConfig(Swagger swagger, MarkupLanguage markupLanguage, String examplesFolderPath,
-                                String schemasFolderPath, String descriptionsFolderPath, boolean separatedDefinitions,
-                                GroupBy pathsGroupedBy, OrderBy definitionsOrderedBy, Locale outputLanguage) {
+
+                                String schemasFolderPath, String descriptionsFolderPath, boolean separatedDefinitions, boolean separatedOperations,
+                                GroupBy pathsGroupedBy, OrderBy definitionsOrderedBy, Locale outputLanguage,
+                                int inlineSchemaDepthLevel, Comparator<String> tagOrdering, Comparator<PathOperation> operationOrdering,
+                                Comparator<String> definitionOrdering, Comparator<Parameter> parameterOrdering, Comparator<String> propertyOrdering,
+                                Comparator<String> responseOrdering,
+                                boolean interDocumentCrossReferences, String interDocumentCrossReferencesPrefix,
+                                boolean flatBody, String anchorPrefix) {
+
         this.swagger = swagger;
         this.markupLanguage = markupLanguage;
         this.examplesFolderPath = examplesFolderPath;
         this.schemasFolderPath = schemasFolderPath;
         this.descriptionsFolderPath = descriptionsFolderPath;
         this.separatedDefinitions = separatedDefinitions;
+        this.separatedOperations = separatedOperations;
         this.pathsGroupedBy = pathsGroupedBy;
         this.definitionsOrderedBy = definitionsOrderedBy;
         this.outputLanguage = outputLanguage;
+        this.inlineSchemaDepthLevel = inlineSchemaDepthLevel;
+        this.tagOrdering = tagOrdering;
+        this.operationOrdering = operationOrdering;
+        this.definitionOrdering = definitionOrdering;
+        this.parameterOrdering = parameterOrdering;
+        this.propertyOrdering = propertyOrdering;
+        this.responseOrdering = responseOrdering;
+        this.interDocumentCrossReferences = interDocumentCrossReferences;
+        this.interDocumentCrossReferencesPrefix = interDocumentCrossReferencesPrefix;
+        this.flatBody = flatBody;
+        this.anchorPrefix = anchorPrefix;
     }
 
     public Swagger getSwagger() {
@@ -86,6 +144,10 @@ public class Swagger2MarkupConfig {
         return separatedDefinitions;
     }
 
+    public boolean isSeparatedOperations() {
+        return separatedOperations;
+    }
+
     public GroupBy getPathsGroupedBy() {
         return pathsGroupedBy;
     }
@@ -96,5 +158,73 @@ public class Swagger2MarkupConfig {
 
     public Locale getOutputLanguage() {
         return outputLanguage;
+    }
+
+    public int getInlineSchemaDepthLevel() {
+        return inlineSchemaDepthLevel;
+    }
+
+    public Comparator<String> getTagOrdering() {
+        return tagOrdering;
+    }
+
+    public Comparator<PathOperation> getOperationOrdering() {
+        return operationOrdering;
+    }
+
+    public Comparator<String> getDefinitionOrdering() {
+        return definitionOrdering;
+    }
+
+    public Comparator<Parameter> getParameterOrdering() {
+        return parameterOrdering;
+    }
+
+    public Comparator<String> getPropertyOrdering() {
+        return propertyOrdering;
+    }
+
+    public Comparator<String> getResponseOrdering() {
+        return responseOrdering;
+    }
+
+    public String getOverviewDocument() {
+        return OVERVIEW_DOCUMENT;
+    }
+
+    public String getPathsDocument() {
+        return PATHS_DOCUMENT;
+    }
+
+    public String getDefinitionsDocument() {
+        return DEFINITIONS_DOCUMENT;
+    }
+
+    public String getSecurityDocument() {
+        return SECURITY_DOCUMENT;
+    }
+
+    public String getSeparatedDefinitionsFolder() {
+        return SEPARATED_DEFINITIONS_FOLDER;
+    }
+
+    public String getSeparatedOperationsFolder() {
+        return SEPARATED_OPERATIONS_FOLDER;
+    }
+
+    public boolean isInterDocumentCrossReferences() {
+        return interDocumentCrossReferences;
+    }
+
+    public String getInterDocumentCrossReferencesPrefix() {
+        return interDocumentCrossReferencesPrefix;
+    }
+
+    public boolean isFlatBody() {
+        return flatBody;
+    }
+
+    public String getAnchorPrefix() {
+        return anchorPrefix;
     }
 }

@@ -21,6 +21,8 @@ package io.github.robwin.swagger2markup.utils;
 import com.google.common.base.Optional;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.MultimapBuilder;
+import com.google.common.collect.Ordering;
+import io.github.robwin.swagger2markup.PathOperation;
 import io.swagger.models.HttpMethod;
 import io.swagger.models.Operation;
 import io.swagger.models.Path;
@@ -30,10 +32,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class TagUtils {
 
@@ -71,32 +70,39 @@ public class TagUtils {
     }
 
     /**
-     * Groups the paths by tag. The key of the Multimap is the tag name.
-     * The value of the Multimap is a Pair which contains the Method and the Path.
+     * Groups the operations by tag. The key of the Multimap is the tag name.
+     * The value of the Multimap is a PathOperation
      *
-     * @param paths the Paths
-     * @return Paths grouped by Tag
+     * @param allOperations all operations
+     * @param tagOrdering comparator for tags
+     * @param operationOrdering comparator for operations, for a given tag
+     * @return Operations grouped by Tag
      */
-    public static Multimap<String, Pair<String, Path>> groupPathsByTag(Map<String, Path> paths) {
-        Multimap<String, Pair<String, Path>> pathsGroupedByTag = MultimapBuilder.SortedSetMultimapBuilder.treeKeys().hashSetValues().build();
-        for (Map.Entry<String, Path> pathEntry : paths.entrySet()) {
-            String resourcePath = pathEntry.getKey();
-            Path path = pathEntry.getValue();
-            for(Map.Entry<HttpMethod, Operation> operationEntry : path.getOperationMap().entrySet()){
-                HttpMethod httpMethod = operationEntry.getKey();
-                Operation operation = operationEntry.getValue();
-                if(operation != null) {
-                    List<String> tags = operation.getTags();
-                    Validate.notEmpty(tags, "Path operations must have tags, if you want to group by tags! The operation '%s %s' has not tags.", httpMethod, resourcePath);
-                    for (String tag : tags) {
-                        if (LOG.isInfoEnabled()) {
-                            LOG.info("Added path operation '{} {}' to tag '{}'", httpMethod, resourcePath, tag);
-                        }
-                        pathsGroupedByTag.put(tag, Pair.of(resourcePath, pathEntry.getValue()));
-                    }
+    public static Multimap<String, PathOperation> groupOperationsByTag(Set<PathOperation> allOperations, Comparator<String> tagOrdering, Comparator<PathOperation> operationOrdering) {
+        MultimapBuilder.MultimapBuilderWithKeys<String> multimapBuilderWithKeys;
+
+        if (tagOrdering == null)
+            multimapBuilderWithKeys = MultimapBuilder.SortedSetMultimapBuilder.treeKeys(Ordering.<String>natural()); // FIXME as-is sorting not supported because of limitations in MultiMap::hashkeys(). Replaced with Ordering.natural()
+        else
+            multimapBuilderWithKeys = MultimapBuilder.SortedSetMultimapBuilder.treeKeys(tagOrdering);
+
+        Multimap<String, PathOperation> operationsGroupedByTag;
+        if (operationOrdering == null)
+            operationsGroupedByTag = multimapBuilderWithKeys.hashSetValues().build();
+        else
+            operationsGroupedByTag = multimapBuilderWithKeys.treeSetValues(operationOrdering).build();
+
+        for (PathOperation operation : allOperations) {
+            List<String> tags = operation.getOperation().getTags();
+            Validate.notEmpty(tags, "Can't GroupBy.TAGS > Operation '%s' has not tags", operation);
+            for (String tag : tags) {
+                if (LOG.isInfoEnabled()) {
+                    LOG.info("Added path operation '{}' to tag '{}'", operation, tag);
                 }
+                operationsGroupedByTag.put(tag, operation);
             }
         }
-        return pathsGroupedByTag;
+
+        return operationsGroupedByTag;
     }
 }

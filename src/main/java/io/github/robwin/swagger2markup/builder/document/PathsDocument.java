@@ -18,76 +18,127 @@
  */
 package io.github.robwin.swagger2markup.builder.document;
 
-import com.google.common.base.Optional;
-import com.google.common.collect.Multimap;
-import io.github.robwin.swagger2markup.GroupBy;
-import io.github.robwin.swagger2markup.config.Swagger2MarkupConfig;
-import io.github.robwin.swagger2markup.utils.ParameterUtils;
-import io.github.robwin.swagger2markup.utils.PropertyUtils;
-import io.swagger.models.*;
-import io.swagger.models.parameters.Parameter;
-import io.swagger.models.properties.Property;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.text.WordUtils;
-import org.apache.commons.lang3.tuple.Pair;
+import static io.github.robwin.swagger2markup.utils.TagUtils.convertTagsListToMap;
+import static io.github.robwin.swagger2markup.utils.TagUtils.getTagDescription;
+import static org.apache.commons.lang3.StringUtils.defaultString;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.ResourceBundle;
+import java.util.Set;
+import java.util.TreeSet;
 
-import static io.github.robwin.swagger2markup.utils.TagUtils.*;
-import static org.apache.commons.lang3.StringUtils.*;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Validate;
+import org.apache.commons.lang3.text.WordUtils;
+
+import com.google.common.base.Joiner;
+import com.google.common.base.Optional;
+import com.google.common.collect.Multimap;
+
+import io.github.robwin.markup.builder.MarkupDocBuilder;
+import io.github.robwin.markup.builder.MarkupDocBuilders;
+import io.github.robwin.markup.builder.MarkupLanguage;
+import io.github.robwin.markup.builder.MarkupTableColumn;
+import io.github.robwin.swagger2markup.GroupBy;
+import io.github.robwin.swagger2markup.PathOperation;
+import io.github.robwin.swagger2markup.config.Swagger2MarkupConfig;
+import io.github.robwin.swagger2markup.type.ObjectType;
+import io.github.robwin.swagger2markup.type.RefType;
+import io.github.robwin.swagger2markup.type.Type;
+import io.github.robwin.swagger2markup.utils.ParameterUtils;
+import io.github.robwin.swagger2markup.utils.PropertyUtils;
+import io.github.robwin.swagger2markup.utils.TagUtils;
+import io.swagger.models.HttpMethod;
+import io.swagger.models.Operation;
+import io.swagger.models.Path;
+import io.swagger.models.Response;
+import io.swagger.models.Tag;
+import io.swagger.models.auth.SecuritySchemeDefinition;
+import io.swagger.models.parameters.Parameter;
+import io.swagger.models.properties.Property;
 
 /**
  * @author Robert Winkler
  */
 public class PathsDocument extends MarkupDocument {
 
+    private final String RESPONSE;
     private final String PATHS;
     private final String RESOURCES;
     private final String PARAMETERS;
+    private final String BODY_PARAMETER;
     private final String RESPONSES;
     private final String EXAMPLE_CURL;
     private final String EXAMPLE_REQUEST;
     private final String EXAMPLE_RESPONSE;
+
+    private final String SECURITY;
     private final String TYPE_COLUMN;
     private final String HTTP_CODE_COLUMN;
-    private final String REQUEST_EXAMPLE_FILE_NAME;
-    private final String RESPONSE_EXAMPLE_FILE_NAME;
-    private final String CURL_EXAMPLE_FILE_NAME;
-    private final String DESCRIPTION_FILE_NAME;
     private final String PARAMETER;
+
+    private static final String PATHS_ANCHOR = "paths";
+    private static final String REQUEST_EXAMPLE_FILE_NAME = "http-request";
+    private static final String RESPONSE_EXAMPLE_FILE_NAME = "http-response";
+    private static final String CURL_EXAMPLE_FILE_NAME = "curl-request";
+    private static final String DESCRIPTION_FOLDER_NAME = "paths";
+    private static final String DESCRIPTION_FILE_NAME = "description";
 
     private boolean examplesEnabled;
     private String examplesFolderPath;
     private boolean handWrittenDescriptionsEnabled;
     private String descriptionsFolderPath;
     private final GroupBy pathsGroupedBy;
+    private final int inlineSchemaDepthLevel;
+    private final Comparator<String> tagOrdering;
+    private final Comparator<PathOperation> operationOrdering;
+    private final Comparator<Parameter> parameterOrdering;
+    private final Comparator<String> responseOrdering;
+    private boolean separatedOperationsEnabled;
+    private String separatedOperationsFolder;
+    private String pathsDocument;
+    private final boolean flatBody;
 
-    public PathsDocument(Swagger2MarkupConfig swagger2MarkupConfig){
-        super(swagger2MarkupConfig);
+
+    public PathsDocument(Swagger2MarkupConfig swagger2MarkupConfig, String outputDirectory){
+        super(swagger2MarkupConfig, outputDirectory);
 
         ResourceBundle labels = ResourceBundle.getBundle("lang/labels",
+
                 swagger2MarkupConfig.getOutputLanguage());
+        RESPONSE = labels.getString("response");
+
         PATHS = labels.getString("paths");
         RESOURCES = labels.getString("resources");
         PARAMETERS = labels.getString("parameters");
+        BODY_PARAMETER = labels.getString("body_parameter");
         RESPONSES = labels.getString("responses");
         EXAMPLE_CURL = labels.getString("example_curl");
         EXAMPLE_REQUEST = labels.getString("example_request");
         EXAMPLE_RESPONSE = labels.getString("example_response");
+        SECURITY = labels.getString("security");
         TYPE_COLUMN = labels.getString("type_column");
         HTTP_CODE_COLUMN = labels.getString("http_code_column");
-        REQUEST_EXAMPLE_FILE_NAME = labels.getString("request_example_file_name");
-        RESPONSE_EXAMPLE_FILE_NAME = labels.getString("response_example_file_name");
-        CURL_EXAMPLE_FILE_NAME = labels.getString("curl_example_file_name");
-        DESCRIPTION_FILE_NAME = labels.getString("description_file_name");
         PARAMETER = labels.getString("parameter");
 
+        this.pathsDocument = swagger2MarkupConfig.getPathsDocument();
+        this.inlineSchemaDepthLevel = swagger2MarkupConfig.getInlineSchemaDepthLevel();
         this.pathsGroupedBy = swagger2MarkupConfig.getPathsGroupedBy();
         if(isNotBlank(swagger2MarkupConfig.getExamplesFolderPath())){
             this.examplesEnabled = true;
@@ -95,8 +146,9 @@ public class PathsDocument extends MarkupDocument {
         }
         if(isNotBlank(swagger2MarkupConfig.getDescriptionsFolderPath())){
             this.handWrittenDescriptionsEnabled = true;
-            this.descriptionsFolderPath = swagger2MarkupConfig.getDescriptionsFolderPath() + "/" + PATHS.toLowerCase();
+            this.descriptionsFolderPath = swagger2MarkupConfig.getDescriptionsFolderPath() + "/" + DESCRIPTION_FOLDER_NAME;
         }
+
         if(examplesEnabled){
             if (logger.isDebugEnabled()) {
                 logger.debug("Include examples is enabled.");
@@ -115,6 +167,25 @@ public class PathsDocument extends MarkupDocument {
                 logger.debug("Include hand-written descriptions is disabled.");
             }
         }
+
+        this.separatedOperationsEnabled = swagger2MarkupConfig.isSeparatedOperations();
+        this.separatedOperationsFolder = swagger2MarkupConfig.getSeparatedOperationsFolder();
+        if(this.separatedOperationsEnabled){
+            if (logger.isDebugEnabled()) {
+                logger.debug("Create separated operation files is enabled.");
+            }
+            Validate.notEmpty(outputDirectory, "Output directory is required for separated operation files!");
+        }else{
+            if (logger.isDebugEnabled()) {
+                logger.debug("Create separated operation files is disabled.");
+            }
+        }
+        this.tagOrdering = swagger2MarkupConfig.getTagOrdering();
+        this.operationOrdering = swagger2MarkupConfig.getOperationOrdering();
+        this.parameterOrdering = swagger2MarkupConfig.getParameterOrdering();
+        this.responseOrdering = swagger2MarkupConfig.getResponseOrdering();
+
+        this.flatBody = swagger2MarkupConfig.isFlatBody();
     }
 
     /**
@@ -124,243 +195,421 @@ public class PathsDocument extends MarkupDocument {
      */
     @Override
     public MarkupDocument build(){
-        paths();
+        operations();
         return this;
     }
 
+    private void addPathsTitle(String title) {
+        this.markupDocBuilder.sectionTitleWithAnchorLevel1(title, PATHS_ANCHOR);
+    }
+
     /**
-     * Builds all paths of the Swagger model. Either grouped as-is or by tags.
+     * Builds all operations of the Swagger model. Either grouped as-is or by tags.
      */
-    private void paths(){
+    private void operations(){
+        Set<PathOperation> allOperations = new LinkedHashSet<>();
         Map<String, Path> paths = swagger.getPaths();
-        if(MapUtils.isNotEmpty(paths)) {
-            if(pathsGroupedBy.equals(GroupBy.AS_IS)){
-                this.markupDocBuilder.sectionTitleLevel1(PATHS);
-                for (Map.Entry<String, Path> pathEntry : paths.entrySet()) {
-                    Path path = pathEntry.getValue();
-                    if(path != null) {
-                        createPathSections(pathEntry.getKey(), path);
+
+        if (paths != null) {
+            for (Map.Entry<String, Path> path : paths.entrySet()) {
+                Map<HttpMethod, Operation> operations = path.getValue().getOperationMap();
+
+                if (operations != null) {
+                    for (Map.Entry<HttpMethod, Operation> operation : operations.entrySet()) {
+                        allOperations.add(new PathOperation(operation.getKey(), path.getKey(), operation.getValue()));
                     }
                 }
-            }else{
-                this.markupDocBuilder.sectionTitleLevel1(RESOURCES);
-                Multimap<String, Pair<String, Path>> pathsGroupedByTag = groupPathsByTag(paths);
+            }
+        }
+
+        if (allOperations.size() > 0) {
+
+            if (pathsGroupedBy == GroupBy.AS_IS) {
+                addPathsTitle(PATHS);
+
+                if (this.operationOrdering != null) {
+                    Set<PathOperation> sortedOperations = new TreeSet<>(this.operationOrdering);
+                    sortedOperations.addAll(allOperations);
+                    allOperations = sortedOperations;
+                }
+
+                for (PathOperation operation : allOperations) {
+                    processOperation(operation);
+                }
+
+
+            } else {
+                addPathsTitle(RESOURCES);
+
+                Multimap<String, PathOperation> operationsGroupedByTag = TagUtils.groupOperationsByTag(allOperations, tagOrdering, operationOrdering);
+
                 Map<String, Tag> tagsMap = convertTagsListToMap(swagger.getTags());
-                for(String tagName : pathsGroupedByTag.keySet()){
+                for (String tagName : operationsGroupedByTag.keySet()) {
                     this.markupDocBuilder.sectionTitleLevel2(WordUtils.capitalize(tagName));
+
                     Optional<String> tagDescription = getTagDescription(tagsMap, tagName);
-                    if(tagDescription.isPresent()) {
+                    if (tagDescription.isPresent()) {
                         this.markupDocBuilder.paragraph(tagDescription.get());
                     }
-                    Collection<Pair<String, Path>> pathsOfTag = pathsGroupedByTag.get(tagName);
-                    for(Pair<String, Path> pathPair : pathsOfTag){
-                        Path path = pathPair.getValue();
-                        if(path != null) {
-                            createPathSections(pathPair.getKey(), path);
+
+                    for (PathOperation operation : operationsGroupedByTag.get(tagName)) {
+                        processOperation(operation);
+                    }
+                }
+            }
+        }
+
+    }
+
+    /**
+     * Create the operation filename depending on the generation mode
+     * @param operation operation
+     * @return operation filename
+     */
+    private String resolveOperationDocument(PathOperation operation) {
+        if (this.separatedOperationsEnabled)
+            return new File(this.separatedOperationsFolder, this.markupDocBuilder.addfileExtension(normalizeFileName(operation.getId()))).getPath();
+        else
+            return this.markupDocBuilder.addfileExtension(this.pathsDocument);
+    }
+
+    /**
+     * Generate operations depending on the generation mode.
+     * @param operation operation
+     */
+    private void processOperation(PathOperation operation) {
+        if (separatedOperationsEnabled) {
+            MarkupDocBuilder pathDocBuilder = this.markupDocBuilder.copy();
+            operation(operation, pathDocBuilder);
+            File operationFile = new File(outputDirectory, resolveOperationDocument(operation));
+
+            try {
+                String operationDirectory = FilenameUtils.getFullPath(operationFile.getPath());
+                String operationFileName = FilenameUtils.getName(operationFile.getPath());
+
+                pathDocBuilder.writeToFileWithoutExtension(operationDirectory, operationFileName, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                if (logger.isWarnEnabled()) {
+                    logger.warn(String.format("Failed to write operation file: %s", operationFile), e);
+                }
+            }
+            if (logger.isInfoEnabled()) {
+                logger.info("Separate operation file produced: {}", operationFile);
+            }
+
+            operationRef(operation, this.markupDocBuilder);
+
+        } else {
+            operation(operation, this.markupDocBuilder);
+        }
+
+        if (logger.isInfoEnabled()) {
+            logger.info("Operation processed: {}", operation);
+        }
+    }
+
+
+    /**
+     * Returns the operation name depending on available informations.
+     * The summary is used to name the operation, or else the operation summary is used.
+     * @param operation operation
+     * @return operation name
+     */
+    private String operationName(PathOperation operation) {
+      return operation.getTitle();
+    }
+
+    /**
+     * Builds an operation.
+     *
+     * @param operation the Swagger Operation
+     * @param docBuilder the docbuilder do use for output
+     */
+    private void operation(PathOperation operation, MarkupDocBuilder docBuilder) {
+        if(operation != null){
+            operationTitle(operation, docBuilder);
+            descriptionSection(operation, docBuilder);
+            inlineDefinitions(parametersSection(operation, docBuilder), operation.getPath() + " " + operation.getMethod(), inlineSchemaDepthLevel, docBuilder);
+            inlineDefinitions(bodyParameterSection(operation, docBuilder), operation.getPath() + " " + operation.getMethod(), inlineSchemaDepthLevel, docBuilder);
+            inlineDefinitions(responsesSection(operation, docBuilder), operation.getPath() + " " + operation.getMethod(), inlineSchemaDepthLevel, docBuilder);
+            consumesSection(operation, docBuilder);
+            producesSection(operation, docBuilder);
+            tagsSection(operation, docBuilder);
+            securitySchemeSection(operation, docBuilder);
+            examplesSection(operation, docBuilder);
+        }
+    }
+
+    /**
+     * Builds a cross-reference to a separated operation file
+     * @param operation the Swagger Operation
+     * @param docBuilder the docbuilder do use for output
+     */
+    private void operationRef(PathOperation operation, MarkupDocBuilder docBuilder) {
+        String document = resolveOperationDocument(operation);
+        String operationName = operationName(operation);
+
+        addOperationTitle(docBuilder.copy().crossReference(document, operationName, operationName).toString(), "ref-" + operationName, docBuilder);
+    }
+
+    /**
+     * Adds the operation title to the document. If the operation has a summary, the title is the summary.
+     * Otherwise the title is the method of the operation and the URL of the operation.
+     *
+     * @param operation the Swagger Operation
+     * @param docBuilder the docbuilder do use for output
+     */
+    private void operationTitle(PathOperation operation, MarkupDocBuilder docBuilder) {
+        String operationName = operationName(operation);
+
+        addOperationTitle(operationName, null, docBuilder);
+        if(operationName.equals(operation.getOperation().getSummary())) {
+            docBuilder.listing(operation.getMethod() + " " + operation.getPath());
+        }
+    }
+
+    /**
+     * Adds a operation title to the document.
+     *
+     * @param title the operation title
+     * @param anchor optional anchor (null => auto-generate from title)
+     * @param docBuilder the docbuilder do use for output
+     */
+    private void addOperationTitle(String title, String anchor, MarkupDocBuilder docBuilder) {
+        if(pathsGroupedBy == GroupBy.AS_IS){
+            docBuilder.sectionTitleWithAnchorLevel2(title, anchor);
+        }else{
+            docBuilder.sectionTitleWithAnchorLevel3(title, anchor);
+        }
+    }
+
+    /**
+     * Adds a operation section title to the document.
+     *
+     * @param title the operation title
+     * @param docBuilder the docbuilder do use for output
+     */
+    private void addOperationSectionTitle(String title, MarkupDocBuilder docBuilder) {
+        if(pathsGroupedBy == GroupBy.AS_IS){
+            docBuilder.sectionTitleLevel3(title);
+        }else{
+            docBuilder.sectionTitleLevel4(title);
+        }
+    }
+
+    /**
+     * Adds a operation description to the document.
+     * If hand-written descriptions exist, it tries to load the description from a file.
+     * If the file cannot be read, the description of the operation is returned.
+     * Operation folder search order :
+     * - normalizeOperationFileName(operation.operationId)
+     * - then, normalizeOperationFileName(operation.method + " " + operation.path)
+     * - then, normalizeOperationFileName(operation.summary)
+     *
+     * @param operation the Swagger Operation
+     * @param docBuilder the docbuilder do use for output
+     */
+    private void descriptionSection(PathOperation operation, MarkupDocBuilder docBuilder) {
+        if(handWrittenDescriptionsEnabled){
+            Optional<String> description = handWrittenOperationDescription(normalizeFileName(operation.getId()), DESCRIPTION_FILE_NAME);
+            if (!description.isPresent())
+                description = handWrittenOperationDescription(normalizeFileName(operation.getTitle()), DESCRIPTION_FILE_NAME);
+
+            if (description.isPresent()) {
+                operationDescription(description.get(), docBuilder);
+            } else {
+                if (logger.isInfoEnabled()) {
+                    logger.info("Hand-written description cannot be read. Trying to use description from Swagger source.");
+                }
+                operationDescription(operation.getOperation().getDescription(), docBuilder);
+            }
+        }else {
+            operationDescription(operation.getOperation().getDescription(), docBuilder);
+        }
+    }
+
+    private void operationDescription(String description, MarkupDocBuilder docBuilder) {
+        if (isNotBlank(description)) {
+            addOperationSectionTitle(DESCRIPTION, docBuilder);
+            docBuilder.paragraph(description);
+        }
+    }
+
+    /**
+     * Filter parameters to display in parameters section
+     * @param parameter parameter to filter
+     * @return true if parameter can be displayed
+     */
+    private boolean filterParameter(Parameter parameter) {
+        return (!this.flatBody || !StringUtils.equals(parameter.getIn(), "body"));
+    }
+
+    private List<ObjectType> parametersSection(PathOperation operation, MarkupDocBuilder docBuilder) {
+        List<Parameter> parameters = operation.getOperation().getParameters();
+        if (this.parameterOrdering != null)
+            Collections.sort(parameters, this.parameterOrdering);
+        List<ObjectType> localDefinitions = new ArrayList<>();
+
+        boolean displayParameters = false;
+        if (CollectionUtils.isNotEmpty(parameters))
+            for (Parameter p : parameters)
+              if (filterParameter(p)) {
+                  displayParameters = true;
+                  break;
+              }
+
+        if (displayParameters) {
+            List<List<String>> cells = new ArrayList<>();
+            List<MarkupTableColumn> cols = Arrays.asList(
+                    new MarkupTableColumn(TYPE_COLUMN, 1).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^1"),
+                    new MarkupTableColumn(NAME_COLUMN, 1).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^1h"),
+                    new MarkupTableColumn(DESCRIPTION_COLUMN, 6).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^6"),
+                    new MarkupTableColumn(REQUIRED_COLUMN, 1).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^1"),
+                    new MarkupTableColumn(SCHEMA_COLUMN, 1).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^1"),
+                    new MarkupTableColumn(DEFAULT_COLUMN, 1).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^1"));
+            for(Parameter parameter : parameters) {
+                if (filterParameter(parameter)) {
+                    Type type = ParameterUtils.getType(parameter, new DefinitionDocumentResolverFromOperation());
+
+                    if (inlineSchemaDepthLevel > 0 && type instanceof ObjectType) {
+                        if (MapUtils.isNotEmpty(((ObjectType) type).getProperties())) {
+                            String localTypeName = parameter.getName();
+
+                            type.setName(localTypeName);
+                            type.setUniqueName(operation.getId() + " " + localTypeName);
+                            localDefinitions.add((ObjectType)type);
+                            type = new RefType(type);
+                        }
+                    }
+                    String parameterType = WordUtils.capitalize(parameter.getIn());
+
+                    List<String> content = Arrays.asList(
+                            parameterType,
+                            parameter.getName(),
+                            parameterDescription(operation, parameter),
+                            Boolean.toString(parameter.getRequired()),
+                            type.displaySchema(markupDocBuilder),
+                            ParameterUtils.getDefaultValue(parameter));
+                    cells.add(content);
+                }
+            }
+            addOperationSectionTitle(PARAMETERS, docBuilder);
+            docBuilder.tableWithColumnSpecs(cols, cells);
+        }
+
+        return localDefinitions;
+    }
+
+    /**
+     * Builds the body parameter section, if {@code Swagger2MarkupConfig.isIsolatedBody()} is true
+     * @param operation the Swagger Operation
+     * @param docBuilder the docbuilder do use for output
+     * @return a list of inlined types.
+     */
+    private List<ObjectType> bodyParameterSection(PathOperation operation, MarkupDocBuilder docBuilder) {
+        List<ObjectType> localDefinitions = new ArrayList<>();
+
+        if (this.flatBody) {
+            List<Parameter> parameters = operation.getOperation().getParameters();
+            if (CollectionUtils.isNotEmpty(parameters)) {
+                for (Parameter parameter : parameters) {
+                    if (StringUtils.equals(parameter.getIn(), "body")) {
+                        Type type = ParameterUtils.getType(parameter, new DefinitionDocumentResolverFromOperation());
+
+                        addOperationSectionTitle(BODY_PARAMETER, docBuilder);
+                        if (isNotBlank(parameter.getDescription())) {
+                            docBuilder.paragraph(parameter.getDescription());
+                        }
+
+                        MarkupDocBuilder typeInfos = MarkupDocBuilders.documentBuilder(this.markupLanguage);
+                        typeInfos.italicText(REQUIRED_COLUMN).textLine(": " + parameter.getRequired());
+                        typeInfos.italicText(NAME_COLUMN).textLine(": " + parameter.getName());
+                        if (!(type instanceof ObjectType)) {
+                            typeInfos.italicText(TYPE_COLUMN).textLine(": " + type.displaySchema(docBuilder));
+
+                            docBuilder.paragraph(typeInfos.toString());
+                        } else {
+                            docBuilder.paragraph(typeInfos.toString());
+
+                            localDefinitions.addAll(typeProperties((ObjectType)type, operation.getId(), this.inlineSchemaDepthLevel, new PropertyDescriptor(type), new DefinitionDocumentResolverFromOperation(), docBuilder));
                         }
                     }
                 }
             }
         }
-    }
 
-    private void createPathSections(String pathUrl, Path path){
-        for(Map.Entry<HttpMethod, Operation> operationEntry : path.getOperationMap().entrySet()){
-            String methodAndPath = operationEntry.getKey() + " " + pathUrl;
-            path(methodAndPath, operationEntry.getValue());
-        }
-    }
-
-    /**
-     * Builds a path.
-     *
-     * @param methodAndPath the Method of the operation and the URL of the path
-     * @param operation the Swagger Operation
-     */
-    private void path(String methodAndPath, Operation operation) {
-        if(operation != null){
-            pathTitle(methodAndPath, operation);
-            descriptionSection(operation);
-            parametersSection(operation);
-            responsesSection(operation);
-            consumesSection(operation);
-            producesSection(operation);
-            tagsSection(operation);
-            examplesSection(operation);
-        }
-    }
-
-    /**
-     * Adds the path title to the document. If the operation has a summary, the title is the summary.
-     * Otherwise the title is the method of the operation and the URL of the path.
-     *
-     * @param methodAndPath the Method of the operation and the URL of the path
-     * @param operation the Swagger Operation
-     */
-    private void pathTitle(String methodAndPath, Operation operation) {
-        String summary = operation.getSummary();
-        String title;
-        if(isNotBlank(summary)) {
-            title = summary;
-            addPathTitle(title);
-            this.markupDocBuilder.listing(methodAndPath);
-        }else{
-            addPathTitle(methodAndPath);
-        }
-        if (logger.isInfoEnabled()) {
-            logger.info("Path processed: {}", methodAndPath);
-        }
-    }
-
-    /**
-     * Adds a path title to the document.
-     *
-     * @param title the path title
-     */
-    private void addPathTitle(String title) {
-        if(pathsGroupedBy.equals(GroupBy.AS_IS)){
-            this.markupDocBuilder.sectionTitleLevel2(title);
-        }else{
-            this.markupDocBuilder.sectionTitleLevel3(title);
-        }
-    }
-
-    /**
-     * Adds a path description to the document.
-     *
-     * @param operation the Swagger Operation
-     */
-    private void descriptionSection(Operation operation) {
-        if(handWrittenDescriptionsEnabled){
-            String summary = operation.getSummary();
-            if(isNotBlank(summary)) {
-                String operationFolder = summary.replace(".", "").replace(" ", "_").toLowerCase();
-                Optional<String> description = handWrittenPathDescription(operationFolder, DESCRIPTION_FILE_NAME);
-                if(description.isPresent()){
-                    pathDescription(description.get());
-                }else{
-                    if (logger.isInfoEnabled()) {
-                        logger.info("Hand-written description cannot be read. Trying to use description from Swagger source.");
-                    }
-                    pathDescription(operation.getDescription());
-                }
-            }else{
-                if (logger.isInfoEnabled()) {
-                    logger.info("Hand-written description cannot be read, because summary of operation is empty. Trying to use description from Swagger source.");
-                }
-                pathDescription(operation.getDescription());
-            }
-        }else {
-            pathDescription(operation.getDescription());
-        }
-    }
-
-    private void pathDescription(String description) {
-        if (isNotBlank(description)) {
-            if(pathsGroupedBy.equals(GroupBy.AS_IS)){
-                this.markupDocBuilder.sectionTitleLevel3(DESCRIPTION);
-            }else{
-                this.markupDocBuilder.sectionTitleLevel4(DESCRIPTION);
-            }
-            this.markupDocBuilder.paragraph(description);
-        }
-    }
-
-    private void parametersSection(Operation operation) {
-        List<Parameter> parameters = operation.getParameters();
-        if(CollectionUtils.isNotEmpty(parameters)){
-            List<String> headerAndContent = new ArrayList<>();
-            // Table header row
-            List<String> header = Arrays.asList(TYPE_COLUMN, NAME_COLUMN, DESCRIPTION_COLUMN, REQUIRED_COLUMN, SCHEMA_COLUMN, DEFAULT_COLUMN);
-            headerAndContent.add(join(header, DELIMITER));
-            for(Parameter parameter : parameters){
-                String type = ParameterUtils.getType(parameter, markupLanguage);
-                String parameterType = WordUtils.capitalize(parameter.getIn() + PARAMETER);
-                // Table content row
-                List<String> content = Arrays.asList(
-                        parameterType,
-                        parameter.getName(),
-                        parameterDescription(operation, parameter),
-                        Boolean.toString(parameter.getRequired()), type,
-                        ParameterUtils.getDefaultValue(parameter));
-                headerAndContent.add(join(content, DELIMITER));
-            }
-            if(pathsGroupedBy.equals(GroupBy.AS_IS)){
-                this.markupDocBuilder.sectionTitleLevel3(PARAMETERS);
-            }else{
-                this.markupDocBuilder.sectionTitleLevel4(PARAMETERS);
-            }
-            this.markupDocBuilder.tableWithHeaderRow(headerAndContent);
-        }
+        return localDefinitions;
     }
 
     /**
      * Retrieves the description of a parameter, or otherwise an empty String.
-     * If hand-written descriptions are enabled, it tries to load the description from a file.
-     * If the file cannot be read, the description the parameter is returned.
+     * If hand-written descriptions exist, it tries to load the description from a file.
+     * If the file cannot be read, the description of the parameter is returned.
+     * Operation folder search order :
+     * - normalizeOperationFileName(operation.operationId)
+     * - then, normalizeOperationFileName(operation.method + " " + operation.path)
+     * - then, normalizeOperationFileName(operation.summary)
      *
      * @param operation the Swagger Operation
      * @param parameter the Swagger Parameter
      * @return the description of a parameter.
      */
-    private String parameterDescription(Operation operation, Parameter parameter){
-        if(handWrittenDescriptionsEnabled){
-            String summary = operation.getSummary();
-            String operationFolder = summary.replace(".", "").replace(" ", "_").toLowerCase();
-            String parameterName = parameter.getName();
-            if(isNotBlank(operationFolder) && isNotBlank(parameterName)) {
-                Optional<String> description = handWrittenPathDescription(operationFolder + "/" + parameterName, DESCRIPTION_FILE_NAME);
-                if(description.isPresent()){
+    private String parameterDescription(final PathOperation operation, Parameter parameter){
+        if (handWrittenDescriptionsEnabled) {
+            final String parameterName = parameter.getName();
+            if (isNotBlank(parameterName)) {
+                Optional<String> description = handWrittenOperationDescription(new File(normalizeFileName(operation.getId()), parameterName).getPath(), DESCRIPTION_FILE_NAME);
+                if (!description.isPresent())
+                    description = handWrittenOperationDescription(new File(normalizeFileName(operation.getTitle()), parameterName).getPath(), DESCRIPTION_FILE_NAME);
+
+                if (description.isPresent()) {
                     return description.get();
-                }
-                else{
+                } else {
                     if (logger.isWarnEnabled()) {
                         logger.warn("Hand-written description file cannot be read. Trying to use description from Swagger source.");
                     }
                     return defaultString(parameter.getDescription());
                 }
-            }else{
+            } else {
                 if (logger.isWarnEnabled()) {
-                    logger.warn("Hand-written description file cannot be read, because summary of operation or name of parameter is empty. Trying to use description from Swagger source.");
+                    logger.warn("Hand-written description file cannot be read, because name of parameter is empty. Trying to use description from Swagger source.");
                 }
                 return defaultString(parameter.getDescription());
             }
-        }else {
+        } else {
             return defaultString(parameter.getDescription());
         }
     }
 
-    private void consumesSection(Operation operation) {
-        List<String> consumes = operation.getConsumes();
+    private void consumesSection(PathOperation operation, MarkupDocBuilder docBuilder) {
+        List<String> consumes = operation.getOperation().getConsumes();
         if(CollectionUtils.isNotEmpty(consumes)){
-            if(pathsGroupedBy.equals(GroupBy.AS_IS)){
-                this.markupDocBuilder.sectionTitleLevel3(CONSUMES);
-            }else{
-                this.markupDocBuilder.sectionTitleLevel4(CONSUMES);
-            }
-            this.markupDocBuilder.unorderedList(consumes);
+            addOperationSectionTitle(CONSUMES, docBuilder);
+            docBuilder.unorderedList(consumes);
         }
 
     }
 
-    private void producesSection(Operation operation) {
-        List<String> produces = operation.getProduces();
+    private void producesSection(PathOperation operation, MarkupDocBuilder docBuilder) {
+        List<String> produces = operation.getOperation().getProduces();
         if(CollectionUtils.isNotEmpty(produces)){
-            if(pathsGroupedBy.equals(GroupBy.AS_IS)){
-                this.markupDocBuilder.sectionTitleLevel3(PRODUCES);
-            }else{
-                this.markupDocBuilder.sectionTitleLevel4(PRODUCES);
-            }
-            this.markupDocBuilder.unorderedList(produces);
+            addOperationSectionTitle(PRODUCES, docBuilder);
+            docBuilder.unorderedList(produces);
         }
     }
 
-    private void tagsSection(Operation operation) {
-        if(pathsGroupedBy.equals(GroupBy.AS_IS)) {
-            List<String> tags = operation.getTags();
+    private void tagsSection(PathOperation operation, MarkupDocBuilder docBuilder) {
+        if(pathsGroupedBy == GroupBy.AS_IS) {
+            List<String> tags = operation.getOperation().getTags();
             if (CollectionUtils.isNotEmpty(tags)) {
-                this.markupDocBuilder.sectionTitleLevel3(TAGS);
-                this.markupDocBuilder.unorderedList(tags);
+                addOperationSectionTitle(TAGS, docBuilder);
+                Set<String> sortedTags;
+                if (tagOrdering == null)
+                    sortedTags = new LinkedHashSet<>();
+                else
+                    sortedTags = new TreeSet<>(this.tagOrdering);
+                sortedTags.addAll(tags);
+                docBuilder.unorderedList(new ArrayList<>(sortedTags));
             }
         }
     }
@@ -369,46 +618,41 @@ public class PathsDocument extends MarkupDocument {
      * Builds the example section of a Swagger Operation. Tries to load the examples from
      * curl-request.adoc, http-request.adoc and http-response.adoc or
      * curl-request.md, http-request.md and http-response.md.
+     * Operation folder search order :
+     * - normalizeOperationFileName(operation.operationId)
+     * - then, normalizeOperationFileName(operation.method + " " + operation.path)
+     * - then, normalizeOperationFileName(operation.summary)
      *
      * @param operation the Swagger Operation
+     * @param docBuilder the docbuilder do use for output
      */
-    private void examplesSection(Operation operation) {
+    private void examplesSection(PathOperation operation, MarkupDocBuilder docBuilder) {
         if(examplesEnabled){
-            String summary = operation.getSummary();
-            if(isNotBlank(summary)) {
-                String exampleFolder = summary.replace(".", "").replace(" ", "_").toLowerCase();
-                Optional<String> curlExample = example(exampleFolder, CURL_EXAMPLE_FILE_NAME);
-                if(curlExample.isPresent()){
-                    if(pathsGroupedBy.equals(GroupBy.AS_IS)){
-                        this.markupDocBuilder.sectionTitleLevel3(EXAMPLE_CURL);
-                    }else{
-                        this.markupDocBuilder.sectionTitleLevel4(EXAMPLE_CURL);
-                    }
-                    this.markupDocBuilder.paragraph(curlExample.get());
-                }
+            Optional<String> curlExample = example(normalizeFileName(operation.getId()), CURL_EXAMPLE_FILE_NAME);
+            if (!curlExample.isPresent())
+                curlExample = example(normalizeFileName(operation.getTitle()), CURL_EXAMPLE_FILE_NAME);
 
-                Optional<String> requestExample = example(exampleFolder, REQUEST_EXAMPLE_FILE_NAME);
-                if(requestExample.isPresent()){
-                    if(pathsGroupedBy.equals(GroupBy.AS_IS)){
-                        this.markupDocBuilder.sectionTitleLevel3(EXAMPLE_REQUEST);
-                    }else{
-                        this.markupDocBuilder.sectionTitleLevel4(EXAMPLE_REQUEST);
-                    }
-                    this.markupDocBuilder.paragraph(requestExample.get());
-                }
-                Optional<String> responseExample = example(exampleFolder, RESPONSE_EXAMPLE_FILE_NAME);
-                if(responseExample.isPresent()){
-                    if(pathsGroupedBy.equals(GroupBy.AS_IS)){
-                        this.markupDocBuilder.sectionTitleLevel3(EXAMPLE_RESPONSE);
-                    }else{
-                        this.markupDocBuilder.sectionTitleLevel4(EXAMPLE_RESPONSE);
-                    }
-                    this.markupDocBuilder.paragraph(responseExample.get());
-                }
-            }else{
-                if (logger.isWarnEnabled()) {
-                    logger.warn("Example file cannot be read, because summary of operation is empty.");
-                }
+            if(curlExample.isPresent()){
+                addOperationSectionTitle(EXAMPLE_CURL, docBuilder);
+                docBuilder.paragraph(curlExample.get());
+            }
+
+            Optional<String> requestExample = example(normalizeFileName(operation.getId()), REQUEST_EXAMPLE_FILE_NAME);
+            if (!requestExample.isPresent())
+                requestExample = example(normalizeFileName(operation.getTitle()), REQUEST_EXAMPLE_FILE_NAME);
+
+            if(requestExample.isPresent()){
+                addOperationSectionTitle(EXAMPLE_REQUEST, docBuilder);
+                docBuilder.paragraph(requestExample.get());
+            }
+
+            Optional<String> responseExample = example(normalizeFileName(operation.getId()), RESPONSE_EXAMPLE_FILE_NAME);
+            if (!responseExample.isPresent())
+                responseExample = example(normalizeFileName(operation.getTitle()), RESPONSE_EXAMPLE_FILE_NAME);
+
+            if(responseExample.isPresent()){
+                addOperationSectionTitle(EXAMPLE_RESPONSE, docBuilder);
+                docBuilder.paragraph(responseExample.get());
             }
         }
     }
@@ -428,7 +672,7 @@ public class PathsDocument extends MarkupDocument {
                     logger.info("Example file processed: {}", path);
                 }
                 try {
-                    return Optional.fromNullable(FileUtils.readFileToString(path.toFile(), StandardCharsets.UTF_8).trim());
+                    return Optional.of(FileUtils.readFileToString(path.toFile(), StandardCharsets.UTF_8).trim());
                 } catch (IOException e) {
                     if (logger.isWarnEnabled()) {
                         logger.warn(String.format("Failed to read example file: %s", path),  e);
@@ -447,13 +691,45 @@ public class PathsDocument extends MarkupDocument {
     }
 
     /**
+     * Builds the security section of a Swagger Operation.
+     *
+     * @param operation the Swagger Operation
+     * @param docBuilder the MarkupDocBuilder document builder
+     */
+    private void securitySchemeSection(PathOperation operation, MarkupDocBuilder docBuilder) {
+        List<Map<String, List<String>>> securitySchemes = operation.getOperation().getSecurity();
+        if (CollectionUtils.isNotEmpty(securitySchemes)) {
+            addOperationSectionTitle(SECURITY, docBuilder);
+            Map<String, SecuritySchemeDefinition> securityDefinitions = swagger.getSecurityDefinitions();
+            List<List<String>> cells = new ArrayList<>();
+            List<MarkupTableColumn> cols = Arrays.asList(
+                    new MarkupTableColumn(TYPE_COLUMN, 1).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^1"),
+                    new MarkupTableColumn(NAME_COLUMN, 1).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^1h"),
+                    new MarkupTableColumn(SCOPES_COLUMN, 6).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^6"));
+            for (Map<String, List<String>> securityScheme : securitySchemes) {
+                for (Map.Entry<String, List<String>> securityEntry : securityScheme.entrySet()) {
+                    String securityKey = securityEntry.getKey();
+                    String type = "UNKNOWN";
+                    if (securityDefinitions != null && securityDefinitions.containsKey(securityKey)) {
+                        type = securityDefinitions.get(securityKey).getType();
+                    }
+                    List<String> content = Arrays.asList(type, docBuilder.copy().crossReference(securityKey, securityKey).toString(),
+                            Joiner.on(",").join(securityEntry.getValue()));
+                    cells.add(content);
+                }
+            }
+            docBuilder.tableWithColumnSpecs(cols, cells);
+        }
+    }
+
+    /**
      * Reads a hand-written description
      *
      * @param descriptionFolder the name of the folder where the description file resides
      * @param descriptionFileName the name of the description file
      * @return the content of the file
      */
-    private Optional<String> handWrittenPathDescription(String descriptionFolder, String descriptionFileName){
+    private Optional<String> handWrittenOperationDescription(String descriptionFolder, String descriptionFileName){
         for (String fileNameExtension : markupLanguage.getFileNameExtensions()) {
             java.nio.file.Path path = Paths.get(descriptionsFolderPath, descriptionFolder, descriptionFileName + fileNameExtension);
             if (Files.isReadable(path)) {
@@ -461,7 +737,7 @@ public class PathsDocument extends MarkupDocument {
                     logger.info("Description file processed: {}", path);
                 }
                 try {
-                    return Optional.fromNullable(FileUtils.readFileToString(path.toFile(), StandardCharsets.UTF_8).trim());
+                    return Optional.of(FileUtils.readFileToString(path.toFile(), StandardCharsets.UTF_8).trim());
                 } catch (IOException e) {
                     if (logger.isWarnEnabled()) {
                         logger.warn(String.format("Failed to read description file: %s", path),  e);
@@ -479,28 +755,98 @@ public class PathsDocument extends MarkupDocument {
         return Optional.absent();
     }
 
-    private void responsesSection(Operation operation) {
-        Map<String, Response> responses = operation.getResponses();
+    private List<ObjectType> responsesSection(PathOperation operation, MarkupDocBuilder docBuilder) {
+        Map<String, Response> responses = operation.getOperation().getResponses();
+        List<ObjectType> localDefinitions = new ArrayList<>();
+
         if(MapUtils.isNotEmpty(responses)){
-            List<String> csvContent = new ArrayList<>();
-            csvContent.add(HTTP_CODE_COLUMN + DELIMITER + DESCRIPTION_COLUMN + DELIMITER + SCHEMA_COLUMN);
-            for(Map.Entry<String, Response> entry : responses.entrySet()){
-                Response response = entry.getValue();
+            List<List<String>> cells = new ArrayList<>();
+            List<MarkupTableColumn> cols = Arrays.asList(
+                    new MarkupTableColumn(HTTP_CODE_COLUMN, 1).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^1h"),
+                    new MarkupTableColumn(DESCRIPTION_COLUMN, 6).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^6"),
+                    new MarkupTableColumn(SCHEMA_COLUMN, 1).withMarkupSpecifiers(MarkupLanguage.ASCIIDOC, ".^1"));
+            Set<String> responseNames;
+            if (this.responseOrdering == null)
+                responseNames = new LinkedHashSet<>();
+            else
+                responseNames = new TreeSet<>(this.responseOrdering);
+            responseNames.addAll(responses.keySet());
+
+            for(String responseName : responseNames){
+                Response response = responses.get(responseName);
+
                 if(response.getSchema() != null){
                     Property property = response.getSchema();
-                    String type = PropertyUtils.getType(property, markupLanguage);
-                    csvContent.add(entry.getKey() + DELIMITER + response.getDescription() + DELIMITER +  type);
+                    Type type = PropertyUtils.getType(property, new DefinitionDocumentResolverFromOperation());
+                    if (this.inlineSchemaDepthLevel > 0 && type instanceof ObjectType) {
+                        if (MapUtils.isNotEmpty(((ObjectType) type).getProperties())) {
+                            String localTypeName = RESPONSE + " " + responseName;
+
+                            type.setName(localTypeName);
+                            type.setUniqueName(operation.getId() + " " + localTypeName);
+                            localDefinitions.add((ObjectType)type);
+                            type = new RefType(type);
+                        }
+                    }
+                    cells.add(Arrays.asList(responseName, response.getDescription(), type.displaySchema(markupDocBuilder)));
                 }else{
-                    csvContent.add(entry.getKey() + DELIMITER + response.getDescription() + DELIMITER +  "No Content");
+                    cells.add(Arrays.asList(responseName, response.getDescription(), NO_CONTENT));
                 }
             }
-            if(pathsGroupedBy.equals(GroupBy.AS_IS)){
-                this.markupDocBuilder.sectionTitleLevel3(RESPONSES);
-            }else{
-                this.markupDocBuilder.sectionTitleLevel4(RESPONSES);
-            }
-            this.markupDocBuilder.tableWithHeaderRow(csvContent);
+            addOperationSectionTitle(RESPONSES, docBuilder);
+            docBuilder.tableWithColumnSpecs(cols, cells);
         }
+        return localDefinitions;
     }
 
+    /**
+     * Builds the title of an inline schema.
+     * Inline definitions should never been referenced in TOC because they have no real existence, so they are just text.
+     * @param title inline schema title
+     * @param anchor inline schema anchor
+     * @param docBuilder the docbuilder do use for output
+     */
+    private void addInlineDefinitionTitle(String title, String anchor, MarkupDocBuilder docBuilder) {
+        docBuilder.anchor(anchor);
+        docBuilder.newLine();
+        docBuilder.boldTextLine(title);
+    }
+
+    /**
+     * Builds inline schema definitions
+     * @param definitions all inline definitions to display
+     * @param uniquePrefix unique prefix to prepend to inline object names to enforce unicity
+     * @param depth current inline schema depth
+     * @param docBuilder the docbuilder do use for output
+     */
+    private void inlineDefinitions(List<ObjectType> definitions, String uniquePrefix, int depth, MarkupDocBuilder docBuilder) {
+        if(CollectionUtils.isNotEmpty(definitions)){
+            for (ObjectType definition: definitions) {
+                addInlineDefinitionTitle(definition.getName(), definition.getUniqueName(), docBuilder);
+
+                List<ObjectType> localDefinitions = typeProperties(definition, uniquePrefix, depth, new PropertyDescriptor(definition), new DefinitionDocumentResolverFromOperation(), docBuilder);
+                for (ObjectType localDefinition : localDefinitions)
+                    inlineDefinitions(Collections.singletonList(localDefinition), uniquePrefix, depth - 1, docBuilder);
+            }
+        }
+
+    }
+
+    /**
+     * Overrides definition document resolver functor for inter-document cross-references from operations files.
+     * This implementation adapt the relative paths to definitions files
+     */
+    class DefinitionDocumentResolverFromOperation extends DefinitionDocumentResolverDefault {
+
+        public DefinitionDocumentResolverFromOperation() {}
+
+        public String apply(String definitionName) {
+            String defaultResolver = super.apply(definitionName);
+
+            if (defaultResolver != null && separatedOperationsEnabled)
+                return interDocumentCrossReferencesPrefix + new File("..", defaultResolver).getPath();
+            else
+                return defaultResolver;
+        }
+    }
 }
