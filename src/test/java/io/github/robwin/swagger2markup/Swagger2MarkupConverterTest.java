@@ -369,6 +369,24 @@ public class Swagger2MarkupConverterTest {
                 .contains("== Определения");
     }
 
+    @Test
+    public void testSwagger2AsciiDocConversionWithFrenchOutputLanguage() throws IOException {
+        //Given
+        File file = new File(Swagger2MarkupConverterTest.class.getResource("/json/swagger.json").getFile());
+        File outputDirectory = new File("build/docs/asciidoc/generated");
+        FileUtils.deleteQuietly(outputDirectory);
+
+        //When
+        Swagger2MarkupConverter.from(file.getAbsolutePath())
+                .withOutputLanguage(Language.FR)
+                .build()
+                .intoFolder(outputDirectory.getAbsolutePath());
+
+        //Then
+        assertThat(new String(Files.readAllBytes(new File(outputDirectory, "definitions.adoc").toPath()),  Charset.forName("UTF-8")))
+                .contains("Schéma");
+    }
+    
     /**
      * Given a markdown document to search, this checks to see if the specified tables
      * have all of the expected fields listed.
