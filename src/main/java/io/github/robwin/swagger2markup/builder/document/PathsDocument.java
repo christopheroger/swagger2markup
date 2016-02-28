@@ -268,9 +268,9 @@ public class PathsDocument extends MarkupDocument {
      */
     private String resolveOperationDocument(PathOperation operation) {
         if (this.separatedOperationsEnabled)
-            return new File(this.separatedOperationsFolder, this.markupDocBuilder.addfileExtension(normalizeFileName(operation.getId()))).getPath();
+            return new File(this.separatedOperationsFolder, this.markupDocBuilder.addFileExtension(normalizeFileName(operation.getId()))).getPath();
         else
-            return this.markupDocBuilder.addfileExtension(this.pathsDocument);
+            return this.markupDocBuilder.addFileExtension(this.pathsDocument);
     }
 
     /**

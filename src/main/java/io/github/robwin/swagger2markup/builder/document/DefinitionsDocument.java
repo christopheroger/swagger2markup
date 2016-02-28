@@ -165,9 +165,9 @@ public class DefinitionsDocument extends MarkupDocument {
      */
     private String resolveDefinitionDocument(String definitionName) {
         if (separatedDefinitionsEnabled)
-            return new File(separatedDefinitionsFolder, markupDocBuilder.addfileExtension(normalizeFileName(definitionName))).getPath();
+            return new File(separatedDefinitionsFolder, markupDocBuilder.addFileExtension(normalizeFileName(definitionName))).getPath();
         else
-            return markupDocBuilder.addfileExtension(definitionsDocument);
+            return markupDocBuilder.addFileExtension(definitionsDocument);
     }
 
     /**
@@ -392,7 +392,7 @@ public class DefinitionsDocument extends MarkupDocument {
         if (Files.isReadable(path)) {
             docBuilder.sectionTitleLevel3(title);
             try {
-                docBuilder.source(FileUtils.readFileToString(path.toFile(), StandardCharsets.UTF_8).trim(), language);
+                docBuilder.listing(FileUtils.readFileToString(path.toFile(), StandardCharsets.UTF_8).trim(), language);
             } catch (IOException e) {
                 if (logger.isWarnEnabled()) {
                     logger.warn(String.format("Failed to read schema file: %s", path), e);
@@ -453,7 +453,7 @@ public class DefinitionsDocument extends MarkupDocument {
             String defaultResolver = super.apply(definitionName);
 
             if (defaultResolver != null && separatedDefinitionsEnabled)
-                return interDocumentCrossReferencesPrefix + markupDocBuilder.addfileExtension(normalizeFileName(definitionName));
+                return interDocumentCrossReferencesPrefix + markupDocBuilder.addFileExtension(normalizeFileName(definitionName));
             else
                 return defaultResolver;
         }

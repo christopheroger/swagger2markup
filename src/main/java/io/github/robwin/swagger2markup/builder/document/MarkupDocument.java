@@ -225,9 +225,9 @@ public abstract class MarkupDocument {
             if (!useInterDocumentCrossReferences || outputDirectory == null)
                 return null;
             else if (separatedDefinitionsEnabled)
-                return interDocumentCrossReferencesPrefix + new File(separatedDefinitionsFolder, markupDocBuilder.addfileExtension(normalizeFileName(definitionName))).getPath();
+                return interDocumentCrossReferencesPrefix + new File(separatedDefinitionsFolder, markupDocBuilder.addFileExtension(normalizeFileName(definitionName))).getPath();
             else
-                return interDocumentCrossReferencesPrefix + markupDocBuilder.addfileExtension(definitionsDocument);
+                return interDocumentCrossReferencesPrefix + markupDocBuilder.addFileExtension(definitionsDocument);
         }
     }
 }
